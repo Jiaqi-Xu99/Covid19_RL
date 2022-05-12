@@ -1,6 +1,5 @@
 import gym
 from gym import spaces
-import pygame
 import numpy as np
 
 
@@ -9,18 +8,28 @@ class CovidEnv(gym.Env):
     def __init__(self, size):
         self.size = int(size)  # The size of the second generation
         self.days = 30  # Assume we observe the 2nd generation for 30 days
+        # Incubation time (Log-normal: Log mean 1.57 days and log std 0.65 days)
+        self.incubation_time = 0
         self.p_symptomatic = 0.8  # probability that an infected person is eventually symptomatic
+        self.quarantine_days = np.array(self.size)  # how many days each 2nd generation cases have been quarantined
 
         """
-        Use a dictionary to represent the observation. Each category is represented by a matrix.
-        The row of each matrix represents a 2nd generation case. The column of each matrix represents one day.
+        Use a dictionary to represent the observation. Each category is represented by a matrix/vector/discrete number.
+        The row represents a 2nd generation case. The column of each matrix represents one day.
         """
         self.observation_space = spaces.Dict({
             "Day of exposure": spaces.Box(low=0, high=1, shape=(self.size, self.days), dtype=np.int16),
-            "Any day before exposure": spaces.Box(low=0, high=1, shape=(self.size, self.days), dtype=np.int16),
             "Showing symptoms": spaces.Box(low=0, high=1, shape=(self.size, self.days), dtype=np.int16),
-            "Not showing symptoms": spaces.Box(low=0, high=1, shape=(self.size, self.days), dtype=np.int16),
-            "Unobserved future": spaces.Box(low=0, high=1, shape=(self.size, self.days), dtype=np.int16)})
+            "Quarantine days": spaces.Box(low=0, high=self.days, shape=(self.size,), dtype=np.int16),
+            "Infectious rate": spaces.Box(low=0, high=self.days, shape=(self.size,), dtype=np.float32),
+            "Unobserved future": spaces.Discrete(self.days)})
+
+        self.state = {
+            "Day of exposure": np.zeros((self.size, self.days)),
+            "Showing symptoms": np.zeros((self.size, self.days)),
+            "Quarantine days": np.zeros((self.size,)),
+            "Infectious rate": np.zeros((self.size,)),
+            "Unobserved future": 5}
 
         """
         We choose to use a discrete number to represent an action space. There should be 2^size scenarios.
@@ -37,50 +46,50 @@ class CovidEnv(gym.Env):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
-        initial_state = {
+        self.state = {
             "Day of exposure": np.zeros((self.size, self.days)),
-            "Any day before exposure": np.zeros((self.size, self.days)),
             "Showing symptoms": np.zeros((self.size, self.days)),
-            "Not showing symptoms": np.zeros((self.size, self.days)),
-            "Unobserved future": np.zeros((self.size, self.days))}
+            "Quarantine days": np.zeros((self.size,)),
+            "Infectious rate": np.zeros((self.size,)),
+            "Unobserved future": 5}
 
         # Assume every 2nd generation cases are exposed on day 3
-        for i in self.size:
-            initial_state["Day of exposure"][i][2] = 1
-
-        for i in self.size:
-            for j in range(2):
-                initial_state["Any day before exposure"][i][j] = 1
+        for i in range(self.size):
+            self.state["Day of exposure"][i][2] = 1
 
         # Assume we haven't found any 2nd generation case have symptoms
-        for i in self.size:
-            for j in range(2):
-                initial_state["Any day before exposure"][i][j] = 1
-
-        # Assume start observing at day 4
-        for i in self.size:
-            for j in range(3, self.days):
-                initial_state["Any day before exposure"][i][j] = 1
 
         if not return_info:
-            return initial_state
+            return self.state
         else:
-            return initial_state, {}
+            return self.state, {}
 
+    """
+    Two things will change the state of our environment. One is the action. The other is the environment itself.
+    First, I change the state of the environment by action. Then, the state will change based on the parameters.
+    """
     def step(self, action):
-        # Map the action (element of {0,1,2,3}) to the direction we walk in
-        direction = self._action_to_direction[action]
-        # We use `np.clip` to make sure we don't leave the grid
-        self._agent_location = np.clip(
-            self._agent_location + direction, 0, self.size - 1
-        )
-        # An episode is done iff the agent has reached the target
-        done = np.array_equal(self._agent_location, self._target_location)
-        reward = 1 if done else 0  # Binary sparse rewards
-        observation = self._get_obs()
-        info = self._get_info()
+        quarantine_days = self._dec_to_binary(action)
+        self.state["Quarantine days"] = np.add(self.state["Quarantine days"], quarantine_days)
+        observed_day = self.state["Unobserved future"]
 
-        return observation, reward, done, info
+        done = bool(observed_day == self.days)
+        reward = -1.0
+        return self.state, reward, done, {}
+
+    def _dec_to_binary(self, n):
+        # array to store binary number
+        binary_num = np.zeros((self.size,))
+
+        # counter for binary array
+        i = 0
+        while n > 0:
+            # storing remainder in binary array
+            binary_num[i] = n % 2
+            n = int(n / 2)
+            i += 1
+
+        return binary_num
 
     def render(self):
         pass
