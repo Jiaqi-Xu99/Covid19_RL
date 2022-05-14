@@ -1,6 +1,13 @@
+import random
+
 import gym
 from gym import spaces
 import numpy as np
+
+
+def incubation_time(time):
+    probability = (np.exp(-(np.log(time) - 1.57)**2 / (2 * 0.65**2)) / (time * 0.65 * np.sqrt(2 * np.pi)))
+    return probability
 
 
 class CovidEnv(gym.Env):
@@ -9,27 +16,25 @@ class CovidEnv(gym.Env):
         self.size = int(size)  # The size of the second generation
         self.days = 30  # Assume we observe the 2nd generation for 30 days
         # Incubation time (Log-normal: Log mean 1.57 days and log std 0.65 days)
-        self.incubation_time = 0
         self.p_symptomatic = 0.8  # probability that an infected person is eventually symptomatic
-        self.quarantine_days = np.array(self.size)  # how many days each 2nd generation cases have been quarantined
+
+        # We run the simulation from day 1 to self.days to get the whole state of our environment
+        self.simulated_state = self._simulation()
 
         """
-        Use a dictionary to represent the observation. Each category is represented by a matrix/vector/discrete number.
-        The row represents a 2nd generation case. The column of each matrix represents one day.
+        Use a dictionary to represent the observation. Each category is represented by a matrix/discrete number.
+        The row of the matrix represents a 2nd generation case. The column of the matrix represents one day.
+        The value of unobserved future n means we haven't observe from day n+1
         """
         self.observation_space = spaces.Dict({
             "Day of exposure": spaces.Box(low=0, high=1, shape=(self.size, self.days), dtype=np.int16),
             "Showing symptoms": spaces.Box(low=0, high=1, shape=(self.size, self.days), dtype=np.int16),
-            "Quarantine days": spaces.Box(low=0, high=self.days, shape=(self.size,), dtype=np.int16),
-            "Infectious rate": spaces.Box(low=0, high=self.days, shape=(self.size,), dtype=np.float32),
             "Unobserved future": spaces.Discrete(self.days)})
 
-        self.state = {
+        self.current_state = {
             "Day of exposure": np.zeros((self.size, self.days)),
             "Showing symptoms": np.zeros((self.size, self.days)),
-            "Quarantine days": np.zeros((self.size,)),
-            "Infectious rate": np.zeros((self.size,)),
-            "Unobserved future": 5}
+            "Unobserved future": 4}
 
         """
         We choose to use a discrete number to represent an action space. There should be 2^size scenarios.
@@ -46,41 +51,48 @@ class CovidEnv(gym.Env):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
-        self.state = {
+        # We run the simulation from day 1 to self.days to get the whole state of our environment
+        self.simulated_state = self._simulation()
+
+        self.current_state = {
             "Day of exposure": np.zeros((self.size, self.days)),
             "Showing symptoms": np.zeros((self.size, self.days)),
-            "Quarantine days": np.zeros((self.size,)),
-            "Infectious rate": np.zeros((self.size,)),
-            "Unobserved future": 5}
+            "Unobserved future": 4}
 
         # Assume every 2nd generation cases are exposed on day 3
         for i in range(self.size):
-            self.state["Day of exposure"][i][2] = 1
+            self.current_state["Day of exposure"][i][2] = 1
 
-        # Assume we haven't found any 2nd generation case have symptoms
-
+        # Assume we haven't found any 2nd generation case have symptoms at first
         if not return_info:
-            return self.state
+            return self.current_state
         else:
-            return self.state, {}
+            return self.current_state, {}
 
-    """
-    Two things will change the state of our environment. One is the action. The other is the environment itself.
-    First, I change the state of the environment by action. Then, the state will change based on the parameters.
-    """
     def step(self, action):
-        quarantine_days = self._dec_to_binary(action)
-        self.state["Quarantine days"] = np.add(self.state["Quarantine days"], quarantine_days)
-        observed_day = self.state["Unobserved future"]
-
-        done = bool(observed_day == self.days)
-        reward = -1.0
-        return self.state, reward, done, {}
+        # Get which day are we going to observe
+        observing_day = self.current_state["Unobserved future"]
+        # Update the state from the result of simulation
+        for i in range(self.size):
+            self.current_state["Day of exposure"][i][observing_day] = self.simulated_state["Day of exposure"][i][observing_day]
+            self.current_state["Showing symptoms"][i][observing_day] = self.simulated_state["Showing symptoms"][i][observing_day]
+        # calculate the reward, reward = - a * (infectious & not quarantine) - b * (not infectious & quarantine)
+        quarantine = self._dec_to_binary(action)
+        sum1 = 0
+        sum2 = 0
+        for i in range(self.size):
+            if self.simulated_state["Whether infected"][i][observing_day] == 1 and quarantine[i] == 0:
+                sum1 = sum1 + 1
+            if self.simulated_state["Whether infected"][i][observing_day] == 0 and quarantine[i] == 1:
+                sum2 = sum2 + 1
+        reward = -1 * sum1 - 0.5 * sum2
+        self.current_state["Unobserved future"] = self.current_state["Unobserved future"] + 1
+        done = bool(self.current_state["Unobserved future"] == self.days)
+        return self.current_state, reward, done, {}
 
     def _dec_to_binary(self, n):
         # array to store binary number
         binary_num = np.zeros((self.size,))
-
         # counter for binary array
         i = 0
         while n > 0:
@@ -88,8 +100,33 @@ class CovidEnv(gym.Env):
             binary_num[i] = n % 2
             n = int(n / 2)
             i += 1
-
         return binary_num
+
+    def _simulation(self):
+        self.simulated_state = {
+            "Day of exposure": np.zeros((self.size, self.days)),
+            "Showing symptoms": np.zeros((self.size, self.days)),
+            "Whether infected": np.zeros((self.size, self.days)),
+            "Unobserved future": 4}
+        # Assume every 2nd generation cases are exposed on day 3
+        for i in range(self.size):
+            self.current_state["Day of exposure"][i][2] = 1
+
+        for i in range(self.simulated_state["Unobserved future"], self.days):
+            for j in range(self.size):
+                #  Whether showing symptom
+                flag = 0
+                p_exposure_to_symptom = incubation_time(i-2)
+                if flag == 0 and random.randint(1, 1000) <= 1000*p_exposure_to_symptom:
+                    #  Assume the symptom will last six days when it starts
+                    for k in range(6):
+                        self.simulated_state["Showing symptoms"][j][i+k] = 1
+                    #  Whether infected
+                    for k in range(-2, 6):
+                        self.simulated_state["Whether infected"][j][i + k] = 1
+                    flag = 1
+
+        return self.simulated_state
 
     def render(self):
         pass
