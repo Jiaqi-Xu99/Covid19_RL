@@ -5,6 +5,7 @@ from gym import spaces
 import numpy as np
 
 
+# Incubation time (Log-normal: Log mean 1.57 days and log std 0.65 days)
 def incubation_time(time):
     probability = (np.exp(-(np.log(time) - 1.57)**2 / (2 * 0.65**2)) / (time * 0.65 * np.sqrt(2 * np.pi)))
     return probability
@@ -15,7 +16,6 @@ class CovidEnv(gym.Env):
     def __init__(self, size):
         self.size = int(size)  # The size of the second generation
         self.days = 30  # Assume we observe the 2nd generation for 30 days
-        # Incubation time (Log-normal: Log mean 1.57 days and log std 0.65 days)
         self.p_symptomatic = 0.8  # probability that an infected person is eventually symptomatic
 
         # We run the simulation from day 1 to self.days to get the whole state of our environment
@@ -35,6 +35,10 @@ class CovidEnv(gym.Env):
             "Day of exposure": np.zeros((self.size, self.days)),
             "Showing symptoms": np.zeros((self.size, self.days)),
             "Unobserved future": 4}
+
+        # Assume every 2nd generation cases are exposed on day 3
+        for i in range(self.size):
+            self.current_state["Day of exposure"][i][2] = 1
 
         """
         We choose to use a discrete number to represent an action space. There should be 2^size scenarios.
@@ -108,22 +112,23 @@ class CovidEnv(gym.Env):
             "Showing symptoms": np.zeros((self.size, self.days)),
             "Whether infected": np.zeros((self.size, self.days)),
             "Unobserved future": 4}
+
         # Assume every 2nd generation cases are exposed on day 3
         for i in range(self.size):
             self.current_state["Day of exposure"][i][2] = 1
 
-        for i in range(self.simulated_state["Unobserved future"], self.days):
-            for j in range(self.size):
+        for i in range(self.size):
+            flag = 0
+            for j in range(self.simulated_state["Unobserved future"], self.days):
                 #  Whether showing symptom
-                flag = 0
-                p_exposure_to_symptom = incubation_time(i-2)
+                p_exposure_to_symptom = incubation_time(j-2)
                 if flag == 0 and random.randint(1, 1000) <= 1000*p_exposure_to_symptom:
                     #  Assume the symptom will last six days when it starts
                     for k in range(6):
-                        self.simulated_state["Showing symptoms"][j][i+k] = 1
+                        self.simulated_state["Showing symptoms"][i][j+k] = 1
                     #  Whether infected
                     for k in range(-2, 6):
-                        self.simulated_state["Whether infected"][j][i + k] = 1
+                        self.simulated_state["Whether infected"][i][j + k] = 1
                     flag = 1
 
         return self.simulated_state
