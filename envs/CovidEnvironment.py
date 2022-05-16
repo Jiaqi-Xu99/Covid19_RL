@@ -133,7 +133,7 @@ class CovidEnv(gym.Env):
 
         return self.simulated_state
 
-    def render(self):
+    def render(self, mode='None'):
         pass
 
     def close(self):
