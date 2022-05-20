@@ -1,5 +1,3 @@
-import random
-
 import gym
 from gym import spaces
 import numpy as np
@@ -23,8 +21,8 @@ class CovidEnv(gym.Env):
         The column of the matrix represents one day. 1 means showing symptoms. -1 means unobserved future.
         We assume every cases get exposed at day0
         """
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(self.size, self.days), dtype=np.int16)
-        self.current_state = np.full((self.size, self.days), -1, dtype=np.int)
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(self.size, self.days), dtype=np.int32)
+        self.current_state = np.full((self.size, self.days), -1, dtype=np.int32)
         self.unobserved_day = 0
 
         """
@@ -45,7 +43,7 @@ class CovidEnv(gym.Env):
         self.simulated_state = self._simulation()
 
         # Initialize the current state
-        self.current_state = np.full((self.size, self.days), -1, dtype=np.int)
+        self.current_state = np.full((self.size, self.days), -1, dtype=np.int32)
         self.unobserved_day = 0
 
         # Assume we haven't found any 2nd generation case have symptoms at first
@@ -101,7 +99,8 @@ class CovidEnv(gym.Env):
                 symptom_day = int(np.random.lognormal(1.57, 0.65, 1))  # day starts to show symptom
                 #  Assume the symptom will last six days when it starts
                 for j in range(symptom_day, symptom_day+6):
-                    self.simulated_state["Showing symptoms"][i][j] = 1
+                    if 0 <= j < self.days:
+                        self.simulated_state["Showing symptoms"][i][j] = 1
                 #  Whether infected
                 for j in range(symptom_day-2, symptom_day+6):
                     if 0 <= j < self.days:
