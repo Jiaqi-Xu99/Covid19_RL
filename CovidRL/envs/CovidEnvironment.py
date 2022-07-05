@@ -1,29 +1,32 @@
 import gym
 from gym import spaces
+from gym.utils import seeding
 import numpy as np
 from scipy.stats import bernoulli
 
 
 class CovidEnv(gym.Env):
 
-    def __init__(self, size):
-        self.size = int(size)  # The size of the second generation
-        self.days = 40  # Assume we observe the 2nd generation for 40 days
-        self.weight_infect_no_quarantine = -1
-        self.weight_no_infect_quarantine = -0.5
+    def __init__(self):
+        self.size = 4  # The size of the second generation
+        self.days = 30  # Assume we observe the 2nd generation for 40 days
+        self.weight_infect_no_quarantine = -10
+        self.weight_no_infect_quarantine = -5
         self.p_infected = 0.8  # probability that a person get infected
 
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
 
         """
-        Use a matrix to represent the observation. The row of the matrix represents a 2nd generation case.
-        The column of the matrix represents one day. 1 means showing symptoms. -1 means unobserved future.
-        We assume every cases get exposed at day0
+        Use a long vector to represent the observation. Every self.days elements represent an index case.
+        1 means showing symptoms. 0 means not showing symptoms. -1 means unobserved future.
+        We assume every cases get exposed at day 0.
         """
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(self.size, self.days), dtype=np.int32)
-        self.current_state = np.full((self.size, self.days), -1, dtype=np.int32)
-        self.unobserved_day = 0
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(self.size * self.days,), dtype=np.int32)
+        self.current_state = np.full((self.size * self.days,), -1, dtype=np.int32)
+        self.observed_day = 0
+
+        self.seed()
 
         """
         We choose to use a discrete number to represent an action space. There should be 2^size scenarios.
@@ -34,17 +37,17 @@ class CovidEnv(gym.Env):
         """
         self.action_space = spaces.Discrete(2 ** self.size)
 
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
+
     # We start to trace when the 1st generation case is tested positive.
     def reset(self, seed=None, return_info=False, options=None):
-        # We need the following line to seed self.np_random
-        super().reset(seed=seed)
-
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
-
         # Initialize the current state
-        self.current_state = np.full((self.size, self.days), -1, dtype=np.int32)
-        self.unobserved_day = 0
+        self.current_state = np.full((self.size * self.days,), -1, dtype=np.int32)
+        self.observed_day = 0
 
         # Assume we haven't found any 2nd generation case have symptoms at first
         if not return_info:
@@ -55,19 +58,34 @@ class CovidEnv(gym.Env):
     def step(self, action):
         # Update the state from the result of simulation
         for i in range(self.size):
-            self.current_state[i][self.unobserved_day] = self.simulated_state["Showing symptoms"][i][self.unobserved_day]
+            self.current_state[i * self.days + self.observed_day] = self.simulated_state["Showing symptoms"][i][self.observed_day]
         # calculate the reward, reward = - a * (infectious & not quarantine) - b * (not infectious & quarantine)
-        quarantine = self._dec_to_binary(action)
+        # quarantine = self._dec_to_binary(action)
         sum1 = 0
         sum2 = 0
+
         for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.unobserved_day] == 1 and quarantine[i] == 0:
+            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and 0 <= self.observed_day <= 2 and \
+             17 <= self.observed_day <= self.days:
                 sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][i][self.unobserved_day] == 0 and quarantine[i] == 1:
+            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and 3 <= self.observed_day <= 16:
                 sum2 = sum2 + 1
+
+        """
+        for i in range(self.size):
+            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
+                sum1 = sum1 + 1
+            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and quarantine[i] == 1:
+               sum2 = sum2 + 1
+        """
+
         reward = self.weight_infect_no_quarantine * sum1 + self.weight_no_infect_quarantine * sum2
-        self.unobserved_day = self.unobserved_day + 1
-        done = bool(self.unobserved_day == self.days)
+        self.observed_day = self.observed_day + 1
+        done = bool(self.observed_day == self.days)
+        # if self.observed_day == self.days:
+        #    print("Status:" + str(self.current_state))
+        #    print("Error1:" + str(self.sum1))
+        # print("Action:" + str(quarantine))
         return self.current_state, reward, done, {}
 
     def _dec_to_binary(self, n):

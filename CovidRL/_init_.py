@@ -1,4 +1,3 @@
-import gym
 from gym.envs.registration import register
 
 register(
@@ -6,5 +5,3 @@ register(
     entry_point='CovidRL.envs.CovidEnvironment:CovidEnv',
     max_episode_steps=1000,
 )
-
-env = gym.make('CovidWorld-v0', size=30)
