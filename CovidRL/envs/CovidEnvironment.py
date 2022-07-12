@@ -10,9 +10,11 @@ class CovidEnv(gym.Env):
     def __init__(self):
         self.size = 4  # The size of the second generation
         self.days = 30  # Assume we observe the 2nd generation for 40 days
-        self.weight_infect_no_quarantine = -10
-        self.weight_no_infect_quarantine = -5
-        self.p_infected = 0.8  # probability that a person get infected
+        # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
+        self.ratio_of_weights = 0.5
+        self.p_high_transmissive = 0.2 # Probability that the index case is highly transmissive
+        self.p_infected = 0.4  # Probability that a person get infected
+        self.p_symptomatic = 0.8 # Probability that a person is infected and showing symptom
 
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
@@ -42,7 +44,7 @@ class CovidEnv(gym.Env):
         return [seed]
 
     # We start to trace when the 1st generation case is tested positive.
-    def reset(self, seed=None, return_info=False, options=None):
+    def reset(self, return_info=False):
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
         # Initialize the current state
@@ -59,42 +61,41 @@ class CovidEnv(gym.Env):
         # Update the state from the result of simulation
         for i in range(self.size):
             self.current_state[i * self.days + self.observed_day] = self.simulated_state["Showing symptoms"][i][self.observed_day]
-        # calculate the reward, reward = - a * (infectious & not quarantine) - b * (not infectious & quarantine)
-        # quarantine = self._dec_to_binary(action)
+        quarantine = self._dec_to_binary(action)
         sum1 = 0
         sum2 = 0
 
+        """
+        # Baseline
         for i in range(self.size):
             if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and 0 <= self.observed_day <= 2 and \
-             17 <= self.observed_day <= self.days:
+             17 <= self.observed_day < self.days:
                 sum1 = sum1 + 1
             if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and 3 <= self.observed_day <= 16:
                 sum2 = sum2 + 1
+       """
 
-        """
+        # """
         for i in range(self.size):
             if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
                 sum1 = sum1 + 1
             if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and quarantine[i] == 1:
                sum2 = sum2 + 1
-        """
-
-        reward = self.weight_infect_no_quarantine * sum1 + self.weight_no_infect_quarantine * sum2
+        # """
+        # Calculate the reward, reward = -1 * (infectious & not quarantine) - ratio * (not infectious & quarantine)
+        reward = -1 * sum1 - self.ratio_of_weights * sum2
         self.observed_day = self.observed_day + 1
         done = bool(self.observed_day == self.days)
-        # if self.observed_day == self.days:
-        #    print("Status:" + str(self.current_state))
-        #    print("Error1:" + str(self.sum1))
-        # print("Action:" + str(quarantine))
+
         return self.current_state, reward, done, {}
 
     def _dec_to_binary(self, n):
-        # array to store binary number
+        # Array to store binary number
         binary_num = np.zeros((self.size,))
-        # counter for binary array
+        # Counter for binary array
         i = 0
         while n > 0:
-            # storing remainder in binary array
+            # Storing remainder in binary array
             binary_num[i] = n % 2
             n = int(n / 2)
             i += 1
@@ -109,20 +110,39 @@ class CovidEnv(gym.Env):
         Use an array that represents which people get infected. 1 represents get infected.
         Use Bernoulli distribution, p = 0.8
         """
-        infected_case = np.array(bernoulli.rvs(0.8, size=self.size))
+
+        # We assume that the index case has 0.2 probability to be highly transmissive.
+        # Under that circumstance, the infectiousness rate becomes 2.2 times bigger.
+        if bernoulli.rvs(self.p_high_transmissive, size=1) == 1:
+            self.p_infected = 0.88
+        infected_case = np.array(bernoulli.rvs(self.p_infected, size=self.size))
         for i in range(self.size):
             #  Whether infected
             if infected_case[i] == 1:
-                # Use log normal distribution, mean = 1.57, std = 0.65
-                symptom_day = int(np.random.lognormal(1.57, 0.65, 1))  # day starts to show symptom
-                #  Assume the symptom will last six days when it starts
-                for j in range(symptom_day, symptom_day+6):
+                # infected and show symptoms
+                if bernoulli.rvs(self.p_symptomatic, size=1) == 1:
+                    # Use log normal distribution, mean = 1.57, std = 0.65
+                    symptom_day = int(np.random.lognormal(1.57, 0.65, 1))  # day starts to show symptom
+                    #  Assume the symptom will last six days when it starts
+                    for j in range(symptom_day, symptom_day+6):
+                        if 0 <= j < self.days:
+                            self.simulated_state["Showing symptoms"][i][j] = 1
+                    #  Whether infected
+                    for j in range(symptom_day-2, symptom_day+6):
+                        if 0 <= j < self.days:
+                            self.simulated_state["Whether infected"][i][j] = 1
+                # infected but not showing symptoms
+                else:
+                    symptom_day = int(np.random.lognormal(1.57, 0.65, 1))
+                    for j in range(symptom_day-2, symptom_day+6):
+                        if 0 <= j < self.days:
+                            self.simulated_state["Whether infected"][i][j] = 1
+            # not infected but show some symptoms
+            else:
+                symptom_day = int(np.random.lognormal(1.57, 0.65, 1))
+                for j in range(symptom_day, symptom_day + 2): # We assume this kind of symptom will last shorter
                     if 0 <= j < self.days:
                         self.simulated_state["Showing symptoms"][i][j] = 1
-                #  Whether infected
-                for j in range(symptom_day-2, symptom_day+6):
-                    if 0 <= j < self.days:
-                        self.simulated_state["Whether infected"][i][j] = 1
 
         return self.simulated_state
 
