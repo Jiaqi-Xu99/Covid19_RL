@@ -11,10 +11,10 @@ class CovidEnv(gym.Env):
         self.size = 4  # The size of the second generation
         self.days = 30  # Assume we observe the 2nd generation for 40 days
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
-        self.ratio_of_weights = 0.5
-        self.p_high_transmissive = 0.2 # Probability that the index case is highly transmissive
+        self.ratio_of_weights = 0.03
+        self.p_high_transmissive = 0.2  # Probability that the index case is highly transmissive
         self.p_infected = 0.4  # Probability that a person get infected
-        self.p_symptomatic = 0.8 # Probability that a person is infected and showing symptom
+        self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
 
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
@@ -27,6 +27,9 @@ class CovidEnv(gym.Env):
         self.observation_space = spaces.Box(low=-1, high=1, shape=(self.size * self.days,), dtype=np.int32)
         self.current_state = np.full((self.size * self.days,), -1, dtype=np.int32)
         self.observed_day = 0
+        for i in range(self.size):
+            self.current_state[i * self.days + self.observed_day] = self.simulated_state["Showing symptoms"][i][self.observed_day]
+        self.observed_day = self.observed_day + 1
 
         self.seed()
 
@@ -50,6 +53,9 @@ class CovidEnv(gym.Env):
         # Initialize the current state
         self.current_state = np.full((self.size * self.days,), -1, dtype=np.int32)
         self.observed_day = 0
+        for i in range(self.size):
+            self.current_state[i * self.days + self.observed_day] = self.simulated_state["Showing symptoms"][i][self.observed_day]
+        self.observed_day = self.observed_day + 1
 
         # Assume we haven't found any 2nd generation case have symptoms at first
         if not return_info:
@@ -73,18 +79,19 @@ class CovidEnv(gym.Env):
                 sum1 = sum1 + 1
             if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and 3 <= self.observed_day <= 16:
                 sum2 = sum2 + 1
-       """
+        """
 
         # """
         for i in range(self.size):
             if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
                 sum1 = sum1 + 1
             if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and quarantine[i] == 1:
-               sum2 = sum2 + 1
+                sum2 = sum2 + 1
         # """
         # Calculate the reward, reward = -1 * (infectious & not quarantine) - ratio * (not infectious & quarantine)
         reward = -1 * sum1 - self.ratio_of_weights * sum2
         self.observed_day = self.observed_day + 1
+
         done = bool(self.observed_day == self.days)
 
         return self.current_state, reward, done, {}
@@ -138,11 +145,6 @@ class CovidEnv(gym.Env):
                         if 0 <= j < self.days:
                             self.simulated_state["Whether infected"][i][j] = 1
             # not infected but show some symptoms
-            else:
-                symptom_day = int(np.random.lognormal(1.57, 0.65, 1))
-                for j in range(symptom_day, symptom_day + 2): # We assume this kind of symptom will last shorter
-                    if 0 <= j < self.days:
-                        self.simulated_state["Showing symptoms"][i][j] = 1
 
         return self.simulated_state
 
