@@ -50,6 +50,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
     for label, (X, y) in enumerate(dataloader):
         # Compute prediction and loss
         pred = model(X)
+        print(pred)
         pred = pred.squeeze(1)
         loss = loss_fn(pred, y)
 
@@ -77,7 +78,7 @@ def test_loop(dataloader, model, loss_fn):
 
 
 if __name__ == '__main__':
-    full_data = CovidDataset('./data_symptom_focused.csv', './data_infection_focused.csv')
+    full_data = CovidDataset('/Users/dailin/Desktop/Covid_RL/Covid19_RL/CovidRL/envs/data_symptom_focused.csv', '/Users/dailin/Desktop/Covid_RL/Covid19_RL/CovidRL/envs/data_infection_focused.csv')
     train_data, test_data = torch.utils.data.random_split(full_data, [1000, 200])
     train_dataloader = DataLoader(train_data, batch_size=30, shuffle=False)
     test_dataloader = DataLoader(test_data, batch_size=30, shuffle=False)

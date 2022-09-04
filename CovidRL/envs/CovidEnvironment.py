@@ -81,7 +81,7 @@ class CovidEnv(gym.Env):
                 sum2 = sum2 + 1
         """
 
-        # """
+        # """TODO
         for i in range(self.size):
             if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
                 sum1 = sum1 + 1

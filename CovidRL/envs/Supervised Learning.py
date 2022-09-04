@@ -1,4 +1,5 @@
 import torch
+import torchvision.models as models
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
@@ -90,3 +91,12 @@ if __name__ == '__main__':
         train_loop(train_dataloader, model, loss_fn, optimizer)
         test_loop(test_dataloader, model, loss_fn)
     print("Done!")
+    torch.save(model.state_dict(), 'model_weights.pth')
+
+def predtion():
+    model.load_state_dict(torch.load('model_weights.pth'))
+    model.eval()
+    
+    for label, (X, y) in enumerate(train_dataloader):
+        pred = model(X)
+    
