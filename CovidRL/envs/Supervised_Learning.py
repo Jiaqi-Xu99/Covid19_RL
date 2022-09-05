@@ -3,7 +3,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
-import csv
+
 
 
 class CovidDataset(Dataset):

@@ -14,9 +14,9 @@ class CovidEnv(gym.Env):
         self.days = 30  # Assume we observe the 2nd generation for 40 days
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
         self.weights = 0.8
-        self.p_high_transmissive = 0.2 # Probability that the index case is highly transmissive
+        self.p_high_transmissive = 0.2  # Probability that the index case is highly transmissive
         self.p_infected = 0.08  # Probability that a person get infected
-        self.p_symptomatic = 0.8 # Probability that a person is infected and showing symptom
+        self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
 
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
