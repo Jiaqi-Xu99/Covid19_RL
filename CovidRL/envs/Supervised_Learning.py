@@ -49,7 +49,6 @@ def train_loop(dataloader, model, loss_fn, optimizer):
     for label, (X, y) in enumerate(dataloader):
 
         # Compute prediction and loss
-        print(X)
         pred = model(X)
         loss = loss_fn(pred, y)
 
