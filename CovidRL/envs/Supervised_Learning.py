@@ -90,3 +90,5 @@ if __name__ == '__main__':
         train_loop(train_dataloader, model, loss_fn, optimizer)
         test_loop(test_dataloader, model, loss_fn)
     print("Done!")
+
+    torch.save(model.state_dict(), 'model_weights.pth')
