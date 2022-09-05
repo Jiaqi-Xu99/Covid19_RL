@@ -3,6 +3,8 @@ from gym import spaces
 from gym.utils import seeding
 import numpy as np
 from scipy.stats import bernoulli
+from .Supervised_Learning  import NeuralNetwork
+import torch
 
 
 class CovidEnv(gym.Env):
@@ -11,10 +13,10 @@ class CovidEnv(gym.Env):
         self.size = 4  # The size of the second generation
         self.days = 30  # Assume we observe the 2nd generation for 40 days
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
-        self.ratio_of_weights = 0.03
-        self.p_high_transmissive = 0.2  # Probability that the index case is highly transmissive
-        self.p_infected = 0.4  # Probability that a person get infected
-        self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
+        self.weights = 0.8
+        self.p_high_transmissive = 0.2 # Probability that the index case is highly transmissive
+        self.p_infected = 0.08  # Probability that a person get infected
+        self.p_symptomatic = 0.8 # Probability that a person is infected and showing symptom
 
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
@@ -79,19 +81,47 @@ class CovidEnv(gym.Env):
                 sum1 = sum1 + 1
             if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and 3 <= self.observed_day <= 16:
                 sum2 = sum2 + 1
+        #"""
+
         """
+        # No quarantine
+        for i in range(self.size):
+            if self.simulated_state["Whether infected"][i][self.observed_day] == 1:
+                sum1 = sum1 + 1
+        #"""
+
+        """
+        # RL
+                for i in range(self.size):
+                    if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
+                        sum1 = sum1 + 1
+                    if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and quarantine[i] == 1:
+                        sum2 = sum2 + 1
+        # """
 
         # """
+        # RL + NN
+        model = NeuralNetwork().double()
+        model.load_state_dict(torch.load('/Users/kevinxu/Desktop/model_weights.pth'))
+        input_data = torch.from_numpy(self.simulated_state["Showing symptoms"].reshape(self.size,self.days))
+        input_data = input_data.unsqueeze(0)
+        NN_output = model(input_data)
+        prediction = NN_output.detach().numpy()
         for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
+            for j in range(self.days):
+                if prediction[0][i][j] > self.ratio_of_weights:
+                    prediction[0][i][j] = 1
+
+        for i in range(self.size):
+            if prediction[0][i][self.observed_day] == 1 and quarantine[i] == 0:
                 sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and quarantine[i] == 1:
+            if prediction[0][i][self.observed_day] == 0 and quarantine[i] == 1:
                 sum2 = sum2 + 1
         # """
-        # Calculate the reward, reward = -1 * (infectious & not quarantine) - ratio * (not infectious & quarantine)
-        reward = -1 * sum1 - self.ratio_of_weights * sum2
-        self.observed_day = self.observed_day + 1
 
+        # Calculate the reward, reward = -1 * (infectious & not quarantine) - ratio * (not infectious & quarantine)
+        reward = -self.weights * sum1 - (1 - self.weights) * sum2
+        self.observed_day = self.observed_day + 1
         done = bool(self.observed_day == self.days)
 
         return self.current_state, reward, done, {}
@@ -109,19 +139,16 @@ class CovidEnv(gym.Env):
         return binary_num
 
     def _simulation(self):
+        # Use an array that represents which people get infected. 1 represents get infected.
         self.simulated_state = {
             "Showing symptoms": np.zeros((self.size, self.days)),
             "Whether infected": np.zeros((self.size, self.days))}
 
-        """
-        Use an array that represents which people get infected. 1 represents get infected.
-        Use Bernoulli distribution, p = 0.8
-        """
-
         # We assume that the index case has 0.2 probability to be highly transmissive.
-        # Under that circumstance, the infectiousness rate becomes 2.2 times bigger.
-        if bernoulli.rvs(self.p_high_transmissive, size=1) == 1:
-            self.p_infected = 0.88
+        # Under that circumstance, the infectiousness rate becomes 5 times bigger.
+        flag = bernoulli.rvs(self.p_high_transmissive, size=1)
+        if flag == 1:
+            self.p_infected = self.p_infected * 5
         infected_case = np.array(bernoulli.rvs(self.p_infected, size=self.size))
         for i in range(self.size):
             #  Whether infected
@@ -145,6 +172,8 @@ class CovidEnv(gym.Env):
                         if 0 <= j < self.days:
                             self.simulated_state["Whether infected"][i][j] = 1
             # not infected but show some symptoms
+        if flag == 1:
+            self.p_infected = self.p_infected / 5
 
         return self.simulated_state
 

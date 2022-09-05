@@ -7,7 +7,7 @@ writer_s = writer(file_s)
 file_i = open('data_infection.csv', 'w')
 writer_i = writer(file_i)
 
-for i in range(0, 100):
+for i in range(0, 200):
     env = CovidEnv()
     full_s = np.resize(env.simulated_state["Showing symptoms"], (env.size, env.days))
     now_s = np.full((env.size, env.days), -1)

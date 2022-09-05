@@ -49,6 +49,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
     for label, (X, y) in enumerate(dataloader):
 
         # Compute prediction and loss
+        print(X)
         pred = model(X)
         loss = loss_fn(pred, y)
 
@@ -76,7 +77,7 @@ def test_loop(dataloader, model, loss_fn):
 
 if __name__ == '__main__':
     full_data = CovidDataset('./data_symptom.csv', './data_infection.csv')
-    train_data, test_data = torch.utils.data.random_split(full_data, [2400, 600])
+    train_data, test_data = torch.utils.data.random_split(full_data, [5000, 1000])
     train_dataloader = DataLoader(train_data, batch_size=30, shuffle=False)
     test_dataloader = DataLoader(test_data, batch_size=30, shuffle=False)
     model = NeuralNetwork()
