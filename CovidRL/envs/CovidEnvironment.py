@@ -15,9 +15,9 @@ class CovidEnv(gym.Env):
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
         self.weights = 0.8
         self.ratio = (1 - self.weights) / self.weights
-        self.p_high_transmissive = 0.2 # Probability that the index case is highly transmissive
+        self.p_high_transmissive = 0.2  # Probability that the index case is highly transmissive
         self.p_infected = 0.08  # Probability that a person get infected
-        self.p_symptomatic = 0.8 # Probability that a person is infected and showing symptom
+        self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
 
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
@@ -91,7 +91,7 @@ class CovidEnv(gym.Env):
                 sum1 = sum1 + 1
         #"""
 
-        #"""
+        """
         # RL
         for i in range(self.size):
             if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
@@ -100,7 +100,7 @@ class CovidEnv(gym.Env):
                 sum2 = sum2 + 1
         # """
 
-        """
+        #"""
         # NN
         model = NeuralNetwork().double()
         model.load_state_dict(torch.load('/Users/kevinxu/Desktop/model_weights.pth'))
@@ -114,9 +114,9 @@ class CovidEnv(gym.Env):
                     prediction[0][i][j] = 1
 
         for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and prediction[0][i][self.observed_day] == 0:
+            if prediction[0][i][self.observed_day] == 1 and quarantine[i] == 0:
                 sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and prediction[0][i][self.observed_day] == 1:
+            if prediction[0][i][self.observed_day] == 0 and quarantine[i] == 1:
                 sum2 = sum2 + 1
         # """
 
