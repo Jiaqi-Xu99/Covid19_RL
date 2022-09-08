@@ -13,7 +13,7 @@ class CovidEnv(gym.Env):
         self.size = 4  # The size of the second generation
         self.days = 30  # Assume we observe the 2nd generation for 40 days
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
-        self.weights = 0.8
+        self.weights = 0.99
         self.ratio = (1 - self.weights) / self.weights
         self.p_high_transmissive = 0.2  # Probability that the index case is highly transmissive
         self.p_infected = 0.08  # Probability that a person get infected
@@ -91,7 +91,7 @@ class CovidEnv(gym.Env):
                 sum1 = sum1 + 1
         #"""
 
-        """
+        #"""
         # RL
         for i in range(self.size):
             if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
@@ -100,11 +100,16 @@ class CovidEnv(gym.Env):
                 sum2 = sum2 + 1
         # """
 
-        #"""
+        """
         # NN
         model = NeuralNetwork().double()
         model.load_state_dict(torch.load('/Users/kevinxu/Desktop/model_weights.pth'))
-        input_data = torch.from_numpy(self.simulated_state["Showing symptoms"].reshape(self.size,self.days))
+        input_data = self.simulated_state["Showing symptoms"].reshape(self.size, self.days)
+        # Normalization
+        norm = np.linalg.norm(input_data, ord=1)
+        if norm != 0:
+            input_data = input_data / norm
+        input_data = torch.from_numpy(input_data)
         input_data = input_data.unsqueeze(0)
         NN_output = model(input_data)
         prediction = NN_output.detach().numpy()
@@ -112,11 +117,13 @@ class CovidEnv(gym.Env):
             for j in range(self.days):
                 if prediction[0][i][j] > self.weights:
                     prediction[0][i][j] = 1
+                else:
+                    prediction[0][i][j] = 0
 
         for i in range(self.size):
-            if prediction[0][i][self.observed_day] == 1 and quarantine[i] == 0:
+            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and prediction[0][i][self.observed_day] == 0:
                 sum1 = sum1 + 1
-            if prediction[0][i][self.observed_day] == 0 and quarantine[i] == 1:
+            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and prediction[0][i][self.observed_day] == 1:
                 sum2 = sum2 + 1
         # """
 
@@ -175,6 +182,28 @@ class CovidEnv(gym.Env):
             # not infected but show some symptoms
         if flag == 1:
             self.p_infected = self.p_infected / 5
+
+        """
+        # Put the simulation to the NN
+        model = NeuralNetwork().double()
+        model.load_state_dict(torch.load('/Users/kevinxu/Desktop/model_weights.pth'))
+        input_data = self.simulated_state["Showing symptoms"].reshape(self.size, self.days)
+        # Normalization
+        norm = np.linalg.norm(input_data, ord=1)
+        if norm != 0:
+            input_data = input_data / norm
+        input_data = torch.from_numpy(input_data)
+        input_data = input_data.unsqueeze(0)
+        NN_output = model(input_data)
+        prediction = NN_output.detach().numpy()
+        for i in range(self.size):
+            for j in range(self.days):
+                if prediction[0][i][j] > 0.5:
+                    prediction[0][i][j] = 1
+                else:
+                    prediction[0][i][j] = 0
+        self.simulated_state["Showing symptoms"] = prediction[0]
+        #"""
 
         return self.simulated_state
 
