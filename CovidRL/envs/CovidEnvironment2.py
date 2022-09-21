@@ -7,7 +7,7 @@ from .Supervised_Learning  import NeuralNetwork
 import torch
 
 
-class CovidEnv(gym.Env):
+class CovidEnv2(gym.Env):
 
     def __init__(self):
         self.size = 4  # The size of the second generation
@@ -27,11 +27,10 @@ class CovidEnv(gym.Env):
         1 means showing symptoms. 0 means not showing symptoms. -1 means unobserved future.
         We assume every cases get exposed at day 0.
         """
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(self.size * self.days,), dtype=np.float32)
-        self.current_state = np.full((self.size * self.days,), -1, dtype=np.float32)
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(1 * 1,), dtype=np.float32)
+        self.current_state = np.zeros((1,1))
         self.observed_day = 0
-        for i in range(self.size):
-            self.current_state[i * self.days + self.observed_day] = self.simulated_state["Prediction"][i][self.observed_day]
+        self.current_state[0][0] = self.simulated_state["Prediction"][0][self.observed_day]
         self.observed_day = self.observed_day + 1
 
         self.seed()
@@ -43,7 +42,7 @@ class CovidEnv(gym.Env):
         We can infer from this 'rule' that the maximum number of our action 7 (7 = 111) means we quarantine 
         all three people.
         """
-        self.action_space = spaces.Discrete(2 ** self.size)
+        self.action_space = spaces.Discrete(2)
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -54,10 +53,8 @@ class CovidEnv(gym.Env):
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
         # Initialize the current state
-        self.current_state = np.full((self.size * self.days,), -1, dtype=np.float32)
         self.observed_day = 0
-        for i in range(self.size):
-            self.current_state[i * self.days + self.observed_day] = self.simulated_state["Prediction"][i][self.observed_day]
+        self.current_state[0][0] = self.simulated_state["Prediction"][0][self.observed_day]
         self.observed_day = self.observed_day + 1
 
         # Assume we haven't found any 2nd generation case have symptoms at first
@@ -68,36 +65,30 @@ class CovidEnv(gym.Env):
 
     def step(self, action):
         # Update the state from the result of simulation
-        for i in range(self.size):
-            self.current_state[i * self.days + self.observed_day] = self.simulated_state["Prediction"][i][self.observed_day]
-        quarantine = self._dec_to_binary(action)
+        self.current_state[0][0] = self.simulated_state["Prediction"][0][self.observed_day]
         sum1 = 0
         sum2 = 0
 
         """
         # Baseline
-        for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and 0 <= self.observed_day <= 2 and \
-             17 <= self.observed_day < self.days:
-                sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and 3 <= self.observed_day <= 16:
-                sum2 = sum2 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and 0 <= self.observed_day <= 2 and 17 <= self.observed_day < self.days:
+            sum1 = sum1 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and 3 <= self.observed_day <= 16:
+            sum2 = sum2 + 1
         #"""
 
         """
         # No quarantine
-        for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 1:
-                sum1 = sum1 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1:
+            sum1 = sum1 + 1
         #"""
 
         #"""
         # RL
-        for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and quarantine[i] == 0:
-                sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and quarantine[i] == 1:
-                sum2 = sum2 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and action == 0:
+            sum1 = sum1 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and action == 1:
+            sum2 = sum2 + 1
         # """
 
         """
@@ -132,6 +123,7 @@ class CovidEnv(gym.Env):
         reward = -1 * sum1 - self.ratio * sum2
         self.observed_day = self.observed_day + 1
         done = bool(self.observed_day == self.days)
+
         return self.current_state, reward, done, {}
 
     def _dec_to_binary(self, n):
