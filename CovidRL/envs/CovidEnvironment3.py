@@ -11,40 +11,56 @@ class CovidEnv3(gym.Env):
 
     def __init__(self):
         self.size = 4  # The size of the second generation
-        self.days = 30 # Assume we observe the 2nd generation for 40 days
+        self.days = 30 # Assume we observe the 2nd generation for 30 days
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
         self.weights = 0.8
         self.ratio = (1 - self.weights) / self.weights
         self.p_high_transmissive = 0.2  # Probability that the index case is highly transmissive
         self.p_infected = 0.08  # Probability that a person get infected
         self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
+
+        # The agent starts to get involved in day 3
+        self.observed_day = 3
         # We run the simulation from day 1 to self.days to get the whole state of our environment
         self.simulated_state = self._simulation()
+        self.prediction = np.zeros(self.days)
 
+        # Initialize the model
+        self.model = NeuralNetwork().double()
+        self.model.load_state_dict(torch.load('/Users/kevinxu/Desktop/CovidRL/CovidRL/envs/model.pth'))
+        # Build the input data
+        self.input_data = np.full((2, self.days), -1.0)
+        for day in range(0, self.observed_day):
+            self.input_data[0][day] = self.simulated_state["Showing symptoms"][0][day]
+            symptom_num = 0.0
+            for i in range(1,self.size):
+                if self.simulated_state["Showing symptoms"][i][day] == 1:
+                    symptom_num = symptom_num + 1.0
+            self.input_data[1][day] = symptom_num / 3.0
+        # Put the observed state to the NN
+        data = torch.from_numpy(self.input_data)
+        data = data.unsqueeze(0)
+        NN_output = self.model(data)
+        self.prediction = NN_output.detach().numpy()
 
         """
         Use a long vector to represent the observation. Every self.days elements represent an index case.
-        1 means showing symptoms. 0 means not showing symptoms. -1 means unobserved future.
+        1 means showing symptoms. 0 means not showing symptom. -1 means unobserved.
         We assume every cases get exposed at day 0.
         """
         self.observation_space = spaces.Box(low=-1, high=1, shape=(3*3,), dtype=np.float32)
-        self.current_state = np.zeros((3*3,))
-        self.observed_day = 3
+        self.current_state = np.zeros(3*3)
         for i in range(1, 3):
-            self.current_state[3 - i] = self.simulated_state["Prediction"][0][self.observed_day - i]
-            self.current_state[3 + i - 1] = self.simulated_state["Prediction"][0][self.observed_day + i]
+            self.current_state[3 - i] = self.prediction[self.observed_day - i]
+            self.current_state[3 + i - 1] = self.prediction[self.observed_day + i]
             self.current_state[6 + 3 - i] = self.simulated_state["Showing symptoms"][0][self.observed_day - i + 1]
 
-        self.seed()
-
         """
-        We choose to use a discrete number to represent an action space. There should be 2^size scenarios.
-        For example, let assume size = 3,  0 means we don't quarantine any people (think 
-        it as a binary representation 000). 1 means we only quarantine the first person (001).
-        We can infer from this 'rule' that the maximum number of our action 7 (7 = 111) means we quarantine 
-        all three people.
+        0 for not quarantine, 1 for quarantine
         """
         self.action_space = spaces.Discrete(2)
+
+        self.seed()
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -52,14 +68,28 @@ class CovidEnv3(gym.Env):
 
     # We start to trace when the 1st generation case is tested positive.
     def reset(self, return_info=False):
-        # We run the simulation from day 1 to self.days to get the whole state of our environment
-        self.simulated_state = self._simulation()
-        # Initialize the current state
-        self.current_state = np.zeros((3*3,))
         self.observed_day = 3
+        self.simulated_state = self._simulation()
+        self.prediction = np.zeros(self.days)
+        # Build the input data
+        self.input_data = np.full((2, self.days), -1.0)
+        for day in range(0, self.observed_day):
+            self.input_data[0][day] = self.simulated_state["Showing symptoms"][0][day]
+            symptom_num = 0.0
+            for i in range(1, self.size):
+                if self.simulated_state["Showing symptoms"][i][day] == 1:
+                    symptom_num = symptom_num + 1.0
+            self.input_data[1][day] = symptom_num / 3.0
+        # Put the observed state to the NN
+        data = torch.from_numpy(self.input_data)
+        data = data.unsqueeze(0)
+        NN_output = self.model(data)
+        self.prediction = NN_output.detach().numpy()
+        # Initialize the current state
+        self.current_state = np.zeros(3*3)
         for i in range(1, 3):
-            self.current_state[3 - i] = self.simulated_state["Prediction"][0][self.observed_day - i]
-            self.current_state[3 + i - 1] = self.simulated_state["Prediction"][0][self.observed_day + i]
+            self.current_state[3 - i] = self.prediction[self.observed_day - i]
+            self.current_state[3 + i - 1] = self.prediction[self.observed_day + i]
             self.current_state[6 + 3 - i] = self.simulated_state["Showing symptoms"][0][self.observed_day - i + 1]
 
         # Assume we haven't found any 2nd generation case have symptoms at first
@@ -69,12 +99,25 @@ class CovidEnv3(gym.Env):
             return self.current_state, {}
 
     def step(self, action):
-        # Update the state from the result of simulation
+        # Update the input data
+        self.input_data[0][self.observed_day] = self.simulated_state["Showing symptoms"][0][self.observed_day]
+        symptom_num = 0.0
+        for i in range(1, self.size):
+            if self.simulated_state["Showing symptoms"][i][self.observed_day] == 1:
+                symptom_num = symptom_num + 1.0
+        self.input_data[1][self.observed_day] = symptom_num / 3.0
+        # Put the updated observed state to the NN
+        data = torch.from_numpy(self.input_data)
+        data = data.unsqueeze(0)
+        NN_output = self.model(data)
+        prediction = NN_output.detach().numpy()
+        self.prediction = prediction
+        # Update the state
         for i in range(1, 3):
-            self.current_state[3 - i] = self.simulated_state["Prediction"][0][self.observed_day - i]
-            self.current_state[3 + i - 1] = self.simulated_state["Prediction"][0][self.observed_day + i]
+            self.current_state[3 - i] = self.prediction[self.observed_day - i]
+            self.current_state[3 + i - 1] = self.prediction[self.observed_day + i]
             self.current_state[6 + 3 - i] = self.simulated_state["Showing symptoms"][0][self.observed_day - i + 1]
-        # quarantine = self._dec_to_binary(action)
+
         sum1 = 0
         sum2 = 0
 
@@ -96,53 +139,37 @@ class CovidEnv3(gym.Env):
 
         """
         # No quarantine
-        for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 1:
-                sum1 = sum1 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1:
+            sum1 = sum1 + 1
         #"""
 
         """
         # Threshold
-        act = np.zeros((self.size,self.days))
-        for i in range(self.size):
-            for j in range(self.days):
-                if self.simulated_state["Prediction"][i][j] > self.weights:
-                    act[i][j] = 1
-                else:
-                    act[i][j] = 0
+        act = np.zeros(self.days) # Action on one close contact
+        for i in range(self.days):
+            if self.prediction[i] > self.weights:
+                act[i] = 1
+            else:
+                act[i] = 0
 
-        for i in range(self.size):
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 1 and act[i][self.observed_day] == 0:
-                sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][i][self.observed_day] == 0 and act[i][self.observed_day] == 1:
-                sum2 = sum2 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and act[self.observed_day] == 0:
+            sum1 = sum1 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and act[self.observed_day] == 1:
+            sum2 = sum2 + 1
         # """
 
         # Calculate the reward, reward = -1 * (infectious & not quarantine) - ratio * (not infectious & quarantine)
-        reward = -1 * sum1 - self.ratio * sum2
+        reward = (-1 * sum1 - self.ratio * sum2) * 10  # Multiply 10 to compare the results more easily
         self.observed_day = self.observed_day + 1
         done = bool(self.observed_day == self.days-3)
 
         return self.current_state, reward, done, {}
 
-    def _dec_to_binary(self, n):
-        # Array to store binary number
-        binary_num = np.zeros((1,))
-        # Counter for binary array
-        i = 0
-        while n > 0:
-            # Storing remainder in binary array
-            binary_num[i] = n % 2
-            n = int(n / 2)
-            i += 1
-        return binary_num
-
     def _simulation(self):
         # Use an array that represents which people get infected. 1 represents get infected.
         self.simulated_state = {
             "Showing symptoms": np.zeros((self.size, self.days)),
-            "Whether infected": np.zeros((self.size, self.days)),
-            "Prediction": np.zeros((self.size, self.days))}
+            "Whether infected": np.zeros((self.size, self.days))}
 
         # We assume that the index case has 0.2 probability to be highly transmissive.
         # Under that circumstance, the infectiousness rate becomes 5 times bigger.
@@ -174,20 +201,6 @@ class CovidEnv3(gym.Env):
             # not infected but show some symptoms
         if flag == 1:
             self.p_infected = self.p_infected / 5
-
-        # Put the simulation to the NN
-        model = NeuralNetwork().double()
-        model.load_state_dict(torch.load('/Users/kevinxu/Desktop/model_weights.pth'))
-        input_data = self.simulated_state["Showing symptoms"].reshape(self.size, self.days)
-        # Normalization
-        norm = np.linalg.norm(input_data, ord=1)
-        if norm != 0:
-            input_data = input_data / norm
-        input_data = torch.from_numpy(input_data)
-        input_data = input_data.unsqueeze(0)
-        NN_output = model(input_data)
-        prediction = NN_output.detach().numpy()
-        self.simulated_state["Prediction"] = prediction[0]
 
         return self.simulated_state
 
