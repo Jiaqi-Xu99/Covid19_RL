@@ -39,7 +39,6 @@ class CovidEnv3(gym.Env):
             self.input_data[1][day] = symptom_num / 3.0
         # Put the observed state to the NN
         data = torch.from_numpy(self.input_data)
-        data = data.unsqueeze(0)
         NN_output = self.model(data)
         self.prediction = NN_output.detach().numpy()
 
@@ -82,7 +81,6 @@ class CovidEnv3(gym.Env):
             self.input_data[1][day] = symptom_num / 3.0
         # Put the observed state to the NN
         data = torch.from_numpy(self.input_data)
-        data = data.unsqueeze(0)
         NN_output = self.model(data)
         self.prediction = NN_output.detach().numpy()
         # Initialize the current state
@@ -108,7 +106,6 @@ class CovidEnv3(gym.Env):
         self.input_data[1][self.observed_day] = symptom_num / 3.0
         # Put the updated observed state to the NN
         data = torch.from_numpy(self.input_data)
-        data = data.unsqueeze(0)
         NN_output = self.model(data)
         prediction = NN_output.detach().numpy()
         self.prediction = prediction
