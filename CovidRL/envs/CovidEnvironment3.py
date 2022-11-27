@@ -151,7 +151,7 @@ class CovidEnv3(gym.Env):
         # Threshold
         act = np.zeros(self.days) # Action on one close contact
         for i in range(self.days):
-            if self.prediction[i] > self.weights:
+            if self.prediction[0][0][0][i] > self.weights:
                 act[i] = 1
             else:
                 act[i] = 0
