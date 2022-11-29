@@ -149,16 +149,14 @@ class CovidEnv3(gym.Env):
 
         """
         # Threshold
-        act = np.zeros(self.days) # Action on one close contact
-        for i in range(self.days):
-            if self.prediction[0][0][0][i] > self.weights:
-                act[i] = 1
-            else:
-                act[i] = 0
+        if self.prediction[0][0][0][self.observed_day] > self.weights:
+            act = 1
+        else:
+            act = 0
 
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and act[self.observed_day] == 0:
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and act == 0:
             sum1 = sum1 + 1
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and act[self.observed_day] == 1:
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and act == 1:
             sum2 = sum2 + 1
         # """
 

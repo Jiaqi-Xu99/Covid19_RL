@@ -6,6 +6,7 @@ import numpy as np
 
 size = 200
 
+
 class CovidDataset(Dataset):
     """loader train data"""
 
@@ -18,15 +19,15 @@ class CovidDataset(Dataset):
         self.infection = pd.read_csv(csv_file2, header=None).dropna()
         self.samples = []
         symptom_list = []
-        for i in range(0, len(self.symptom),2):
+        for i in range(0, len(self.symptom), 2):
             symptom = np.array(self.symptom[i:i + 2])
-            pad = np.zeros((2,1))
+            pad = np.zeros((2, 1))
             symptom = np.c_[pad, symptom]
             symptom_list.append(symptom)
 
         infection_list = np.array(self.infection)
         for k in range(0, len(infection_list)):
-            self.samples.append([symptom_list[k], infection_list[k]])         
+            self.samples.append([symptom_list[k], infection_list[k]])
 
     def __len__(self):
         return len(self.samples)
@@ -53,7 +54,7 @@ class NeuralNetwork(nn.Module):
 def train_loop(dataloader, model, loss_fn, optimizer):
     model = model.double()
     for label, (X, y) in enumerate(dataloader):
-        #input size (30, 1, 2, 31)
+        # input size (30, 1, 2, 31)
         X = X.view(X.shape[0], 1, 2, 31)
         # Compute prediction and loss
         pred = model(X)
@@ -102,5 +103,5 @@ if __name__ == '__main__':
         train_loop(train_dataloader, model, loss_fn, optimizer)
         test_loop(test_dataloader, model, loss_fn)
     print("Done!")
-    
+
     torch.save(model.state_dict(), 'model.pth')
