@@ -15,8 +15,8 @@ class CovidEnv3(gym.Env):
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
         self.weights = 0.8
         self.ratio = (1 - self.weights) / self.weights
-        self.p_high_transmissive = 0.2  # Probability that the index case is highly transmissive
-        self.p_infected = 0.08  # Probability that a person get infected
+        self.p_high_transmissive = 0.109  # Probability that the index case is highly transmissive
+        self.p_infected = 0.0116  # Probability that a person get infected (given index case is not highly transmissive)
         self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
 
         # The agent starts to get involved in day 3
@@ -173,11 +173,11 @@ class CovidEnv3(gym.Env):
             "Showing symptoms": np.zeros((self.size, self.days)),
             "Whether infected": np.zeros((self.size, self.days))}
 
-        # We assume that the index case has 0.2 probability to be highly transmissive.
-        # Under that circumstance, the infectiousness rate becomes 5 times bigger.
+        # We assume that the index case has 0.109 probability to be highly transmissive.
+        # Under that circumstance, the infectiousness rate becomes 24.4 times bigger.
         flag = bernoulli.rvs(self.p_high_transmissive, size=1)
         if flag == 1:
-            self.p_infected = self.p_infected * 5
+            self.p_infected = self.p_infected * 24
         infected_case = np.array(bernoulli.rvs(self.p_infected, size=self.size))
         for i in range(self.size):
             #  Whether infected
@@ -186,8 +186,8 @@ class CovidEnv3(gym.Env):
                 if bernoulli.rvs(self.p_symptomatic, size=1) == 1:
                     # Use log normal distribution, mean = 1.57, std = 0.65
                     symptom_day = int(np.random.lognormal(1.57, 0.65, 1))  # day starts to show symptom
-                    #  Assume the symptom will last six days when it starts
-                    for j in range(symptom_day, symptom_day + 6):
+                    duration = int(np.random.lognormal(15.06, 7.57, 1))  # duration of showing symptom
+                    for j in range(symptom_day, symptom_day + duration):
                         if 0 <= j < self.days:
                             self.simulated_state["Showing symptoms"][i][j] = 1
                     #  Whether infected
@@ -202,7 +202,7 @@ class CovidEnv3(gym.Env):
                             self.simulated_state["Whether infected"][i][j] = 1
             # not infected but show some symptoms
         if flag == 1:
-            self.p_infected = self.p_infected / 5
+            self.p_infected = self.p_infected / 24
 
         return self.simulated_state
 
