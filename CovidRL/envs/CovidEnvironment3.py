@@ -46,10 +46,12 @@ class CovidEnv3(gym.Env):
         self.prediction = NN_output.detach().numpy()
 
         """
-        Use a long vector to represent the observation. Every self.days elements represent an index case.
-        1 means showing symptoms. 0 means not showing symptom. -1 means unobserved.
-        We assume every cases get exposed at day 0. Index 0 to 2 represent the prediction of three days before the observing day. 
-        Index 3 to 5 represent the prediction of three days after the observing day. Index 6 to 8  
+        Use a long vector to represent the observation. Only focus on one 2nd generation.
+        1 means showing symptoms. 0 means not showing symptoms. -1 means unobserved.
+        We assume that person get exposed at day 0. 
+        Index 0 to 2 represent the prediction of whether show symptoms during three days before the observing day. 
+        Index 3 to 5 represent the prediction of whether show symptoms during three days after the observing day. 
+        Index 6 to 8 represent whether that person shows symptoms in recent three days.
         """
         self.observation_space = spaces.Box(low=-1, high=1, shape=(3*3,), dtype=np.float32)
         self.current_state = np.zeros(3*3)
@@ -125,7 +127,6 @@ class CovidEnv3(gym.Env):
 
         sum1 = 0
         sum2 = 0
-
         #"""
         # RL
         if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and action == 0:
@@ -187,7 +188,7 @@ class CovidEnv3(gym.Env):
                 if bernoulli.rvs(self.p_symptomatic, size=1) == 1:
                     # Use log normal distribution, mean = 1.57, std = 0.65
                     symptom_day = int(np.random.lognormal(1.57, 0.65, 1))  # day starts to show symptom
-                    duration = int(np.random.lognormal(15.06, 7.57, 1))  # duration of showing symptom
+                    duration = int(np.random.lognormal(2.70, 0.15, 1))  # duration of showing symptom
                     for j in range(symptom_day, symptom_day + duration):
                         if 0 <= j < self.days:
                             self.simulated_state["Showing symptoms"][i][j] = 1
