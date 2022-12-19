@@ -29,16 +29,16 @@ class CovidEnv3(gym.Env):
         self.model = NeuralNetwork().double()
         self.model.load_state_dict(torch.load('/Users/kevinxu/Desktop/CovidRL/CovidRL/envs/model.pth'))
         # Build the input data
-        self.input_data = np.full((2,self.days+1),-1.0)
+        self.input_data = np.full((2, self.days+1), -1.0)
         self.input_data[0][0] = 0
         self.input_data[1][0] = 0
-        for day in range(1, self.observed_day):
-            self.input_data[0][day] = self.simulated_state["Showing symptoms"][0][day]
+        for day in range(0, self.observed_day):
+            self.input_data[0][day+1] = self.simulated_state["Showing symptoms"][0][day]
             symptom_num = 0.0
-            for i in range(1,self.size):
+            for i in range(1, self.size):
                 if self.simulated_state["Showing symptoms"][i][day] == 1:
                     symptom_num = symptom_num + 1.0
-            self.input_data[1][day] = symptom_num / 3.0
+            self.input_data[1][day+1] = symptom_num / 3.0
         # Put the observed state to the NN
         data = torch.from_numpy(self.input_data)
         data = data.view(1, 1, 2, 31)
@@ -48,7 +48,8 @@ class CovidEnv3(gym.Env):
         """
         Use a long vector to represent the observation. Every self.days elements represent an index case.
         1 means showing symptoms. 0 means not showing symptom. -1 means unobserved.
-        We assume every cases get exposed at day 0.
+        We assume every cases get exposed at day 0. Index 0 to 2 represent the prediction of three days before the observing day. 
+        Index 3 to 5 represent the prediction of three days after the observing day. Index 6 to 8  
         """
         self.observation_space = spaces.Box(low=-1, high=1, shape=(3*3,), dtype=np.float32)
         self.current_state = np.zeros(3*3)
@@ -77,13 +78,13 @@ class CovidEnv3(gym.Env):
         self.input_data = np.full((2, self.days + 1), -1.0)
         self.input_data[0][0] = 0
         self.input_data[1][0] = 0
-        for day in range(1, self.observed_day):
-            self.input_data[0][day] = self.simulated_state["Showing symptoms"][0][day]
+        for day in range(0, self.observed_day):
+            self.input_data[0][day+1] = self.simulated_state["Showing symptoms"][0][day]
             symptom_num = 0.0
             for i in range(1, self.size):
                 if self.simulated_state["Showing symptoms"][i][day] == 1:
                     symptom_num = symptom_num + 1.0
-            self.input_data[1][day] = symptom_num / 3.0
+            self.input_data[1][day+1] = symptom_num / 3.0
         # Put the observed state to the NN
         data = torch.from_numpy(self.input_data)
         data = data.view(1, 1, 2, 31)
@@ -177,7 +178,7 @@ class CovidEnv3(gym.Env):
         # Under that circumstance, the infectiousness rate becomes 24.4 times bigger.
         flag = bernoulli.rvs(self.p_high_transmissive, size=1)
         if flag == 1:
-            self.p_infected = self.p_infected * 24
+            self.p_infected = self.p_infected * 24.4
         infected_case = np.array(bernoulli.rvs(self.p_infected, size=self.size))
         for i in range(self.size):
             #  Whether infected
@@ -202,7 +203,7 @@ class CovidEnv3(gym.Env):
                             self.simulated_state["Whether infected"][i][j] = 1
             # not infected but show some symptoms
         if flag == 1:
-            self.p_infected = self.p_infected / 24
+            self.p_infected = self.p_infected / 24.4
 
         return self.simulated_state
 
