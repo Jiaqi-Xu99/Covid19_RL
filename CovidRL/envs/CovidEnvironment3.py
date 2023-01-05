@@ -3,7 +3,7 @@ from gym import spaces
 from gym.utils import seeding
 import numpy as np
 from scipy.stats import bernoulli
-from .Supervised_Learning  import NeuralNetwork
+from .Supervised_Learning import NeuralNetwork
 import torch
 
 
@@ -11,10 +11,9 @@ class CovidEnv3(gym.Env):
 
     def __init__(self):
         self.size = 4  # The size of the second generation
-        self.days = 30 # Assume we observe the 2nd generation for 30 days
+        self.days = 30  # Assume we observe the 2nd generation for 30 days
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
-        self.weights = 0.8
-        self.ratio = (1 - self.weights) / self.weights
+        self.ratio = 0.01
         self.p_high_transmissive = 0.109  # Probability that the index case is highly transmissive
         self.p_infected = 0.0116  # Probability that a person get infected (given index case is not highly transmissive)
         self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
@@ -29,19 +28,26 @@ class CovidEnv3(gym.Env):
         self.model = NeuralNetwork().double()
         self.model.load_state_dict(torch.load('/Users/kevinxu/Desktop/CovidRL/CovidRL/envs/model.pth'))
         # Build the input data
-        self.input_data = np.full((2, self.days+1), -1.0)
-        self.input_data[0][0] = 0
-        self.input_data[1][0] = 0
+        self.input_data = np.full((5, self.days + 1), 1)
+        for index in range(0, 5):
+            self.input_data[index][0] = 0
         for day in range(0, self.observed_day):
-            self.input_data[0][day+1] = self.simulated_state["Showing symptoms"][0][day]
-            symptom_num = 0.0
-            for i in range(1, self.size):
-                if self.simulated_state["Showing symptoms"][i][day] == 1:
+            self.input_data[0][day + 1] = self.simulated_state["Showing symptoms"][0][day]
+        for day in range(0, self.observed_day):
+            self.input_data[1][day + 1] = 0
+        symptom_num = 0.0
+        for day in range(0, self.observed_day):
+            for num in range(1, self.size):
+                if self.simulated_state["Showing symptoms"][num][day] == 1.0:
                     symptom_num = symptom_num + 1.0
-            self.input_data[1][day+1] = symptom_num / 3.0
+            self.input_data[2][day + 1] = symptom_num
+        for day in range(0, self.observed_day):
+            self.input_data[3][day + 1] = self.size - 1
+        self.input_data[4] = range(0, 31)
+        self.input_data = (self.input_data - self.input_data.mean()) / self.input_data.std()
         # Put the observed state to the NN
-        data = torch.from_numpy(self.input_data)
-        data = data.view(1, 1, 2, 31)
+        data = torch.from_numpy(self.input_data.astype(float))
+        data = data.view(1, 1, 5, 31)
         NN_output = self.model(data)
         self.prediction = NN_output.detach().numpy()
 
@@ -53,8 +59,8 @@ class CovidEnv3(gym.Env):
         Index 3 to 5 represent the prediction of whether show symptoms during three days after the observing day. 
         Index 6 to 8 represent whether that person shows symptoms in recent three days.
         """
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(3*3,), dtype=np.float32)
-        self.current_state = np.zeros(3*3)
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(3 * 3,), dtype=np.float32)
+        self.current_state = np.zeros(3 * 3)
         for i in range(1, 3):
             self.current_state[3 - i] = self.prediction[0][0][0][self.observed_day - i]
             self.current_state[3 + i - 1] = self.prediction[0][0][0][self.observed_day + i]
@@ -77,23 +83,30 @@ class CovidEnv3(gym.Env):
         self.simulated_state = self._simulation()
         self.prediction = np.zeros(self.days)
         # Build the input data
-        self.input_data = np.full((2, self.days + 1), -1.0)
-        self.input_data[0][0] = 0
-        self.input_data[1][0] = 0
+        self.input_data = np.full((5, self.days + 1), 1)
+        for index in range(0, 5):
+            self.input_data[index][0] = 0
         for day in range(0, self.observed_day):
-            self.input_data[0][day+1] = self.simulated_state["Showing symptoms"][0][day]
-            symptom_num = 0.0
-            for i in range(1, self.size):
-                if self.simulated_state["Showing symptoms"][i][day] == 1:
+            self.input_data[0][day + 1] = self.simulated_state["Showing symptoms"][0][day]
+        for day in range(0, self.observed_day):
+            self.input_data[1][day + 1] = 0
+        symptom_num = 0.0
+        for day in range(0, self.observed_day):
+            for num in range(1, self.size):
+                if self.simulated_state["Showing symptoms"][num][day] == 1.0:
                     symptom_num = symptom_num + 1.0
-            self.input_data[1][day+1] = symptom_num / 3.0
+            self.input_data[2][day + 1] = symptom_num
+        for day in range(0, self.observed_day):
+            self.input_data[3][day + 1] = self.size - 1
+        self.input_data[4] = range(0, 31)
+        self.input_data = (self.input_data - self.input_data.mean()) / self.input_data.std()
         # Put the observed state to the NN
-        data = torch.from_numpy(self.input_data)
-        data = data.view(1, 1, 2, 31)
+        data = torch.from_numpy(self.input_data.astype(float))
+        data = data.view(1, 1, 5, 31)
         NN_output = self.model(data)
         self.prediction = NN_output.detach().numpy()
         # Initialize the current state
-        self.current_state = np.zeros(3*3)
+        self.current_state = np.zeros(3 * 3)
         for i in range(1, 3):
             self.current_state[3 - i] = self.prediction[0][0][0][self.observed_day - i]
             self.current_state[3 + i - 1] = self.prediction[0][0][0][self.observed_day + i]
@@ -107,15 +120,16 @@ class CovidEnv3(gym.Env):
 
     def step(self, action):
         # Update the input data
-        self.input_data[0][self.observed_day] = self.simulated_state["Showing symptoms"][0][self.observed_day]
+        self.input_data[0][self.observed_day + 1] = self.simulated_state["Showing symptoms"][0][self.observed_day]
+        self.input_data[1][self.observed_day + 1] = 0
         symptom_num = 0.0
         for i in range(1, self.size):
             if self.simulated_state["Showing symptoms"][i][self.observed_day] == 1:
                 symptom_num = symptom_num + 1.0
-        self.input_data[1][self.observed_day] = symptom_num / 3.0
+        self.input_data[2][self.observed_day + 1] = symptom_num
         # Put the updated observed state to the NN
-        data = torch.from_numpy(self.input_data)
-        data = data.view(1, 1, 2, 31)
+        data = torch.from_numpy(self.input_data.astype(float))
+        data = data.view(1, 1, 5, 31)
         NN_output = self.model(data)
         prediction = NN_output.detach().numpy()
         self.prediction = prediction
@@ -127,7 +141,7 @@ class CovidEnv3(gym.Env):
 
         sum1 = 0
         sum2 = 0
-        #"""
+        """
         # RL
         if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and action == 0:
             sum1 = sum1 + 1
@@ -149,7 +163,7 @@ class CovidEnv3(gym.Env):
             sum1 = sum1 + 1
         #"""
 
-        """
+        # """
         # Threshold
         if self.prediction[0][0][0][self.observed_day] > self.weights:
             act = 1
@@ -162,10 +176,18 @@ class CovidEnv3(gym.Env):
             sum2 = sum2 + 1
         # """
 
+        """
+        # Quarantine based on symptoms
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and self.simulated_state["Showing symptoms"][0][self.observed_day] == 0:
+            sum1 = sum1 + 1
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and self.simulated_state["Showing symptoms"][0][self.observed_day] == 1:
+            sum2 = sum2 + 1
+        # """
+
         # Calculate the reward, reward = -1 * (infectious & not quarantine) - ratio * (not infectious & quarantine)
-        reward = (-1 * sum1 - self.ratio * sum2) * 10 # Multiply 10 to compare the results more easily
+        reward = (-1 * sum1 - self.ratio * sum2) * 100  # Multiply 10 to compare the results more easily
         self.observed_day = self.observed_day + 1
-        done = bool(self.observed_day == self.days-3)
+        done = bool(self.observed_day == self.days - 3)
 
         return self.current_state, reward, done, {}
 
