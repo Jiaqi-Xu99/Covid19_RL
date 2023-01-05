@@ -14,6 +14,7 @@ class CovidEnv3(gym.Env):
         self.days = 30  # Assume we observe the 2nd generation for 30 days
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
         self.ratio = 0.01
+        self.weights = 1 / (1 + self.ratio)
         self.p_high_transmissive = 0.109  # Probability that the index case is highly transmissive
         self.p_infected = 0.0116  # Probability that a person get infected (given index case is not highly transmissive)
         self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
