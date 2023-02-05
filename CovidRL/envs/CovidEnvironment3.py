@@ -3,7 +3,7 @@ from gym import spaces
 from gym.utils import seeding
 import numpy as np
 from scipy.stats import bernoulli
-from Supervised_Learning import NeuralNetwork
+from .Supervised_Learning import NeuralNetwork
 import torch
 
 
@@ -21,7 +21,7 @@ class CovidEnv3(gym.Env):
         self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
         self.p_symptom_not_infected = 0.01  # Probability that a person showing symptom but not infected
         self.observed_day = 3  # The agent starts to get involved in day 3
-        self.duration = 14  # The default quarantine duration is 14
+        self.duration = 5  # The default quarantine duration is 14
         self.test = 0  # No test for RL at first
         self.first_symptom = None
         self.simulated_state = None
@@ -58,10 +58,10 @@ class CovidEnv3(gym.Env):
     # We start to trace when the 1st generation case is tested positive.
     def reset(self, return_info=False):
         self.observed_day = 3
-        self.duration = 14
+        self.duration = 5
         self.test = 0
         self.simulated_state = self._simulation()
-        # find when first show symptom
+        # Find when first show symptom
         self.first_symptom = np.full(self.size, -1)
         for i in range(self.size):
             for j in range(self.days):
@@ -136,7 +136,7 @@ class CovidEnv3(gym.Env):
         sum2 = 0
         sum3 = 0
 
-        """
+        #"""
         # RL
         if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and (action == 0 or action == 2):
             sum1 = sum1 + 1
@@ -161,18 +161,19 @@ class CovidEnv3(gym.Env):
             if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and (
                     self.observed_day <= self.first_symptom[0] or self.observed_day > self.first_symptom[0] + self.duration):
                 sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and self.first_symptom[0] < self.observed_day <= self.first_symptom[0] + self.duration:
+            if self.simulated_state["Whether infected"][0][
+                self.observed_day] == 0 and self.first_symptom[0] < self.observed_day <= self.first_symptom[0] + self.duration:
                 sum2 = sum2 + 1
         else:
             if self.simulated_state["Whether infected"][0][self.observed_day] == 1:
                 sum1 = sum1 + 1
-        # """
+        #"""
 
         """
         # No quarantine
         if self.simulated_state["Whether infected"][0][self.observed_day] == 1:
             sum1 = sum1 + 1
-        # """
+        #"""
 
         """
         # Threshold
@@ -256,18 +257,20 @@ class CovidEnv3(gym.Env):
                         if 0 <= j < self.days:
                             self.simulated_state["Showing symptoms"][i][j] = 1
                     #  Whether infected
-                    for j in range(symptom_day - 2, symptom_day + 6):
+                    period = int(np.random.lognormal(6.67, 2, 1))  # duration of infectiousness
+                    for j in range(symptom_day - 2, symptom_day + period):
                         if 0 <= j < self.days:
                             self.simulated_state["Whether infected"][i][j] = 1
                 # infected but not showing symptoms
                 else:
                     symptom_day = int(np.random.lognormal(1.57, 0.65, 1))
-                    for j in range(symptom_day - 2, symptom_day + 6):
+                    period = int(np.random.lognormal(6.67, 2, 1))
+                    for j in range(symptom_day - 2, symptom_day + period):
                         if 0 <= j < self.days:
                             self.simulated_state["Whether infected"][i][j] = 1
             # not infected but show some symptoms
 
-            #  developing symptoms that is independent of infection status
+            # developing symptoms that is independent of infection status
             symptom_not_infected = bernoulli.rvs(self.p_symptom_not_infected, size=self.days)
             for j in range(self.days):
                 if symptom_not_infected[j] == 1:
