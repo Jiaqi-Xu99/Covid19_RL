@@ -18,10 +18,10 @@ class CovidDataset(Dataset):
         self.infection = pd.read_csv(csv_file2, header=None).dropna()
         self.samples = []
         symptom_list = []
-        for i in range(0, len(self.symptom),5):
+        for i in range(0, len(self.symptom), 5):
             symptom = np.array(self.symptom[i:i + 5])
             # pad = np.zeros((5,1))
-            pad = np.zeros((5,1))
+            pad = np.zeros((5, 1))
             symptom = np.c_[pad, symptom]
             symptom_list.append(symptom)
 
@@ -106,7 +106,7 @@ def test_loop(dataloader, model, loss_fn):
 
 if __name__ == '__main__':
     full_data = CovidDataset('./data/data_symptom_size4.csv', './data/data_infection_size4.csv')
-    train_data, test_data = torch.utils.data.random_split(full_data, [33600, 14400])
+    train_data, test_data = torch.utils.data.random_split(full_data, [8000, 4000])
     # train_data, test_data = torch.utils.data.random_split(full_data, [67200, 28800])
     
     train_dataloader = DataLoader(train_data, batch_size=30, shuffle=False)
@@ -124,4 +124,4 @@ if __name__ == '__main__':
         print(f"AUC: {auc:4f} \n")
 
     print("Done!")
-    torch.save(model.state_dict(), 'model.pth')
+    torch.save(model.state_dict(), 'model2.pth')
