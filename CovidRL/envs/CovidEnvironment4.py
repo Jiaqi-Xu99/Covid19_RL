@@ -3,11 +3,11 @@ from gym import spaces
 from gym.utils import seeding
 import numpy as np
 from scipy.stats import bernoulli
-from .Supervised_Learning import NeuralNetwork
+from Supervised_Learning2 import NeuralNetwork
 import torch
 
 
-class CovidEnv3(gym.Env):
+class CovidEnv4(gym.Env):
 
     def __init__(self):
         self.size = 10  # The size of the second generation
@@ -15,12 +15,14 @@ class CovidEnv3(gym.Env):
         # We assume weight_infect_no_quarantine = -1, and calculate weight_no_infect_quarantine from the ratio
         self.ratio = 0.01
         self.weights = 1/(1 + self.ratio)
+        self.ratio2 = 0.01
         self.p_high_transmissive = 0.109  # Probability that the index case is highly transmissive
         self.p_infected = 0.03  # Probability that a person get infected (given index case is not highly transmissive)
         self.p_symptomatic = 0.8  # Probability that a person is infected and showing symptom
         self.p_symptom_not_infected = 0.01  # Probability that a person showing symptom but not infected
         self.observed_day = 3  # The agent starts to get involved in day 3
         self.duration = 14  # The default quarantine duration is 14
+        self.test = 0  # No test for RL at first
         self.first_symptom = None
         self.simulated_state = None
         self.input_data = None
@@ -28,7 +30,7 @@ class CovidEnv3(gym.Env):
         self.current_state = None
         # Initialize the model
         self.model = NeuralNetwork().double()
-        self.model.load_state_dict(torch.load('/Users/kevinxu/Desktop/CovidRL/CovidRL/envs/model.pth'))
+        self.model.load_state_dict(torch.load('/Users/kevinxu/Desktop/CovidRL/CovidRL/envs/model_w_o_test_all_size.pth'))
 
         """
         Use a long vector to represent the observation. Only focus on one 2nd generation.
@@ -37,13 +39,16 @@ class CovidEnv3(gym.Env):
         Index 0 to 2 represent the prediction of whether show symptoms during three days before the observing day. 
         Index 3 to 5 represent the prediction of whether show symptoms during three days after the observing day. 
         Index 6 to 8 represent whether that person shows symptoms in recent three days.
+        Index 9 to 11 represents whether testing
+        Index 12 to 14 represents the result of testing
         """
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(9,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(15,), dtype=np.float32)
 
         """
-        0 for not quarantine, 1 for quarantine
+        0 for not quarantine and not testing, 1 for quarantine but not testing
+        2 for not quarantine but testing, 3 for quarantine and testing
         """
-        self.action_space = spaces.Discrete(2)
+        self.action_space = spaces.Discrete(4)
 
         self.seed()
 
@@ -55,6 +60,7 @@ class CovidEnv3(gym.Env):
     def reset(self, return_info=False):
         self.observed_day = 3
         self.duration = 14
+        self.test = 0
         self.simulated_state = self._simulation()
         # Find when first show symptom
         self.first_symptom = np.full(self.size, -1)
@@ -65,8 +71,8 @@ class CovidEnv3(gym.Env):
                     break
         self.prediction = np.zeros(self.days)
         # Build the input data
-        self.input_data = np.full((5, self.days + 1), 1)
-        for index in range(0, 5):
+        self.input_data = np.full((7, self.days + 1), 1)
+        for index in range(0, 7):
             self.input_data[index][0] = 0
         if self.first_symptom[0] + 1 > self.observed_day:
             for day in range(0, self.observed_day + 1):
@@ -85,18 +91,21 @@ class CovidEnv3(gym.Env):
         for day in range(0, self.observed_day + 1):
             self.input_data[3][day + 1] = self.size - 1
         self.input_data[4] = range(0, 31)
+        for day in range(0, self.days):
+            self.input_data[5][day + 1] = 0
+            self.input_data[6][day + 1] = 0
         self.input_data = (self.input_data - self.input_data.mean()) / self.input_data.std()
         # Put the observed state to the NN
         data = torch.from_numpy(self.input_data.astype(float))
-        data = data.view(1, 1, 5, 31)
+        data = data.view(1, 1, 7, 31)
         NN_output = self.model(data)
         self.prediction = NN_output.detach().numpy()
         # Initialize the current state
-        self.current_state = np.zeros(9)
+        self.current_state = np.zeros(15)
         for i in range(1, 4):
             self.current_state[3 - i] = self.prediction[0][0][0][self.observed_day - i]
             self.current_state[3 + i - 1] = self.prediction[0][0][0][self.observed_day + i]
-            self.current_state[6 + 3 - i] = self.simulated_state["Showing symptoms"][0][self.observed_day - i]
+            self.current_state[9 - i] = self.simulated_state["Showing symptoms"][0][self.observed_day - i]
         # Assume we haven't found any 2nd generation case have symptoms at first
         if not return_info:
             return self.current_state
@@ -113,9 +122,12 @@ class CovidEnv3(gym.Env):
             if self.first_symptom[i] + 1 <= self.observed_day:
                 symptom_num += 1
         self.input_data[2][self.observed_day + 1] = symptom_num
+        if self.test == 1:
+            self.input_data[5][self.observed_day] = self.test
+            self.input_data[6][self.observed_day + 1] = self.simulated_state["Whether infected"][0][self.observed_day - 1]
         # Put the updated observed state to the NN
         data = torch.from_numpy(self.input_data.astype(float))
-        data = data.view(1, 1, 5, 31)
+        data = data.view(1, 1, 7, 31)
         NN_output = self.model(data)
         prediction = NN_output.detach().numpy()
         self.prediction = prediction
@@ -124,43 +136,32 @@ class CovidEnv3(gym.Env):
             self.current_state[3 - i] = self.prediction[0][0][0][self.observed_day - i]
             self.current_state[3 + i - 1] = self.prediction[0][0][0][self.observed_day + i]
             self.current_state[6 + 3 - i] = self.simulated_state["Showing symptoms"][0][self.observed_day - i]
+        self.current_state[9] = self.current_state[10]
+        self.current_state[10] = self.current_state[11]
+        self.current_state[11] = self.test
+        self.current_state[12] = self.current_state[13]
+        self.current_state[13] = self.current_state[14]
+        if self.test == 1:
+            self.current_state[14] = self.simulated_state["Whether infected"][0][self.observed_day - 1]
+        else:
+            self.current_state[14] = 0
 
         sum1 = 0
         sum2 = 0
+        sum3 = 0
 
         #"""
         # RL
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and action == 0:
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and (action == 0 or action == 2):
             sum1 = sum1 + 1
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and action == 1:
+        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and (action == 1 or action == 3):
             sum2 = sum2 + 1
-        # """
-
-        """
-        # 14 days quarantine
-        if self.first_symptom[0] >= 0:
-            if self.observed_day > self.first_symptom[0] + self.duration:
-                if self.simulated_state["Showing symptoms"][0][self.observed_day - 1] == 1:
-                    self.first_symptom[0] = self.observed_day - 1
-                    self.duration = 1
-                else:
-                    self.first_symptom[0] = -1
-            if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and (
-                    self.observed_day <= self.first_symptom[0] or self.observed_day > self.first_symptom[0] + self.duration):
-                sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][0][
-                self.observed_day] == 0 and self.first_symptom[0] < self.observed_day <= self.first_symptom[0] + self.duration:
-                sum2 = sum2 + 1
+        if action == 2 or action == 3:
+            self.test = 1
+            sum3 = sum3 + 1
         else:
-            if self.simulated_state["Whether infected"][0][self.observed_day] == 1:
-                sum1 = sum1 + 1
-        #"""
-
-        """
-        # No quarantine
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 1:
-            sum1 = sum1 + 1
-        #"""
+            self.test = 0
+        # """
 
         """
         # Threshold
@@ -175,46 +176,8 @@ class CovidEnv3(gym.Env):
             sum2 = sum2 + 1
         # """
 
-        """
-        # Quarantine based on symptoms
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and self.simulated_state["Showing symptoms"][0][self.observed_day - 1] == 0:
-            sum1 = sum1 + 1
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 0 and self.simulated_state["Showing symptoms"][0][self.observed_day - 1] == 1:
-            sum2 = sum2 + 1
-        # """
-
-        """
-        # Quarantine everyday
-        if self.simulated_state["Whether infected"][0][self.observed_day] == 0:
-            sum2 = sum2 + 1
-        # """
-
-        """
-        # CDC policy
-        flag = 0
-        if self.first_symptom[0] >= 0:
-            if self.observed_day > self.first_symptom[0] + self.duration:
-                if self.simulated_state["Showing symptoms"][0][self.observed_day - 1] == 1:
-                    self.first_symptom[0] = self.observed_day - 1
-                    self.duration = 1
-                else:
-                    self.first_symptom[0] = -1
-            if self.simulated_state["Whether infected"][0][self.observed_day] == 1 and (
-                    self.observed_day < self.first_symptom[0] or self.observed_day > self.first_symptom[0] + self.duration):
-                sum1 = sum1 + 1
-            if self.simulated_state["Whether infected"][0][
-                self.observed_day] == 0 and self.first_symptom[0] <= self.observed_day <= self.first_symptom[0] + self.duration:
-                sum2 = sum2 + 1
-            if self.observed_day == self.first_symptom[0] + self.duration and flag == 0:
-                sum3 = sum3 + 1
-                flag = 1
-        else:
-            if self.simulated_state["Whether infected"][0][self.observed_day] == 1:
-                sum1 = sum1 + 1
-        # """
-
         # Calculate the reward, reward = -1 * (infectious & not quarantine) - ratio * (not infectious & quarantine)
-        reward = (-1 * sum1 - self.ratio * sum2) * 100 # Multiply 100 to compare the results more easily
+        reward = (-1 * sum1 - self.ratio * sum2 - self.ratio2 * sum3) * 100 # Multiply 100 to compare the results more easily
         self.observed_day = self.observed_day + 1
         done = bool(self.observed_day == self.days-3)
 
